@@ -12,6 +12,14 @@ Default to using Bun instead of Node.js.
 - Use `bunx <package>` instead of `npx`
 - Bun automatically loads `.env`
 
+## First-time setup
+
+```sh
+cp .env.example .env         # create .env from template (uses non-standard port 5493)
+docker compose up -d          # start PostgreSQL 18 + ParadeDB (pg_search/BM25)
+bun install                   # install dependencies
+```
+
 ## Run
 
 ```sh
@@ -20,6 +28,28 @@ bun src/index.tsx            # production
 ```
 
 Open http://localhost:30555
+
+## Database
+
+PostgreSQL 18 with [ParadeDB](https://paradedb.com) pg_search extension (BM25 full-text search). Runs via Docker on a **non-standard port** to avoid conflicts.
+
+Config is in `.env` (gitignored, see `.env.example`):
+
+```
+PGPORT=5493
+PGUSER=iglite
+PGPASSWORD=iglite
+PGDATABASE=iglite
+```
+
+Bun auto-loads `.env` — access via `process.env.PGPORT` etc. Docker Compose also reads `.env` automatically.
+
+```sh
+docker compose up -d          # start
+docker compose down           # stop
+docker compose logs db        # logs
+psql -h localhost -p 5493 -U iglite  # connect
+```
 
 ## Architecture
 
@@ -44,6 +74,8 @@ src/
 blog/                      # Markdown posts (*.md with optional frontmatter)
 public/                    # Static assets (htmx.min.js, datastar.min.js, etc.)
 docs/tech/                 # Detailed technical docs
+docker-compose.yml         # PostgreSQL 18 + ParadeDB (pg_search/BM25)
+.env.example               # Environment template (copy to .env)
 ```
 
 ## Key patterns

@@ -1,0 +1,14 @@
+services:
+  db:
+    image: paradedb/paradedb:latest-pg18
+    ports:
+      - "${PGPORT:-5493}:5432"
+    environment:
+      POSTGRES_USER: ${PGUSER:-iglite}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-iglite}
+      POSTGRES_DB: ${PGDATABASE:-iglite}
+    volumes:
+      - pgdata:/var/lib/postgresql
+
+volumes:
+  pgdata:
