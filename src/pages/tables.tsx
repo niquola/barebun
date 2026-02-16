@@ -3,7 +3,7 @@ import { Layout, html } from "../layout.tsx";
 import type { Session, SessionUser } from "../lib/auth.ts";
 
 type Table = { schema: string; name: string; type: string; est_rows: number; columns: number };
-type Column = { name: string; type: string; nullable: string; default_value: string | null };
+type Column = { name: string; type: string; nullable: string; default_value: string | null; comment: string | null };
 
 async function listTables(ctx: Context): Promise<Table[]> {
   return await ctx.sql`
@@ -25,13 +25,17 @@ async function listTables(ctx: Context): Promise<Table[]> {
 async function listColumns(ctx: Context, schema: string, table: string): Promise<Column[]> {
   return await ctx.sql`
     SELECT
-      column_name as name,
-      data_type as type,
-      is_nullable as nullable,
-      column_default as default_value
-    FROM information_schema.columns
-    WHERE table_schema = ${schema} AND table_name = ${table}
-    ORDER BY ordinal_position
+      c.column_name as name,
+      c.data_type as type,
+      c.is_nullable as nullable,
+      c.column_default as default_value,
+      col_description(
+        (quote_ident(c.table_schema) || '.' || quote_ident(c.table_name))::regclass,
+        c.ordinal_position
+      ) as comment
+    FROM information_schema.columns c
+    WHERE c.table_schema = ${schema} AND c.table_name = ${table}
+    ORDER BY c.ordinal_position
   `;
 }
 
@@ -86,7 +90,8 @@ function TableDetail({ schema, table, columns, user }: { schema: string; table: 
             <th class="py-2 pr-4 font-semibold">Column</th>
             <th class="py-2 pr-4 font-semibold">Type</th>
             <th class="py-2 pr-4 font-semibold">Nullable</th>
-            <th class="py-2 font-semibold">Default</th>
+            <th class="py-2 pr-4 font-semibold">Default</th>
+            <th class="py-2 font-semibold">Comment</th>
           </tr>
         </thead>
         <tbody>
@@ -95,7 +100,8 @@ function TableDetail({ schema, table, columns, user }: { schema: string; table: 
               <td class="py-2 pr-4 font-medium">{c.name}</td>
               <td class="py-2 pr-4 text-gray-600">{c.type}</td>
               <td class="py-2 pr-4 text-gray-500">{c.nullable === "YES" ? "yes" : "no"}</td>
-              <td class="py-2 text-gray-500 font-mono text-xs">{c.default_value ?? ""}</td>
+              <td class="py-2 pr-4 text-gray-500 font-mono text-xs">{c.default_value ?? ""}</td>
+              <td class="py-2 text-gray-400 text-xs">{c.comment ?? ""}</td>
             </tr>
           ))}
         </tbody>
