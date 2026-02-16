@@ -58,19 +58,35 @@ Server-side rendered app: Bun + TSX templating + Tailwind CSS + htmx + Datastar.
 ```
 src/
 ├── index.tsx              # Entry: Tailwind build, routes, Bun.serve()
+├── system.ts              # Context: start() creates ctx with SQL pool, stop() closes it
 ├── layout.tsx             # Layout component (nav, head, scripts)
 ├── styles.css             # Tailwind entry (@import "tailwindcss" + page CSS)
 ├── components/
 │   └── tabs.tsx           # Reusable Datastar tab component
 ├── pages/
-│   ├── blog.tsx           # Blog routes & components
-│   └── blog.css           # Blog typography (@apply)
+│   ├── blog.tsx           # Blog routes & components (static, no ctx)
+│   ├── blog.css           # Blog typography (@apply)
+│   └── tables.tsx         # DB tables browser (needs ctx)
+├── repo/
+│   ├── <table>.gen.ts     # Auto-generated CRUD (overwritten by codegen)
+│   └── <table>.ts         # Manual wrapper (created once, never overwritten)
 ├── lib/
 │   ├── jsx/               # JSX → HTML string runtime (no React)
 │   │   ├── jsx-runtime.ts
 │   │   └── jsx-dev-runtime.ts
 │   ├── markdown.ts        # Bun.markdown + Shiki syntax highlighting
+│   ├── db.ts              # DB helpers: array formatters/parsers for Bun SQL
+│   ├── migrations.ts      # Migration engine (generate/up/down/status)
+│   ├── codegen.ts         # Repo codegen from PostgreSQL metadata
 │   └── livereload.ts      # WebSocket live reload for dev
+scripts/
+│   ├── migrate.ts         # CLI: bun scripts/migrate.ts <generate|up|down|status>
+│   ├── codegen.ts         # CLI: bun scripts/codegen.ts [--schema <s>] [table ...]
+│   └── sql.ts             # CLI: bun scripts/sql.ts [--test] "SQL query"
+test/
+│   └── repo/              # Tests mirror src/ structure
+│       └── users.test.ts
+migrations/                # Timestamped SQL/TS migration files
 blog/                      # Markdown posts (*.md with optional frontmatter)
 public/                    # Static assets (htmx.min.js, datastar.min.js, etc.)
 docs/tech/                 # Detailed technical docs
@@ -79,6 +95,118 @@ docker-compose.yml         # PostgreSQL 18 + ParadeDB (pg_search/BM25)
 ```
 
 ## Key patterns
+
+### System context
+
+`src/system.ts` defines `Context` (holds the SQL connection pool) and lifecycle functions. Uses Bun's built-in SQL client (`import { SQL } from "bun"`) which auto-reads `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` from env.
+
+- `start()` — creates context with connection pool for production
+- `startTest()` — creates `<db>_test` database, runs migrations, returns test context
+- `stop(ctx)` — closes the connection pool
+- `withTx(() => ctx, fn)` — wraps a test in a transaction that rolls back (test isolation)
+
+```tsx
+import { start } from "@/system.ts";
+const ctx = start();              // creates { sql: new SQL() }
+
+// Pages that need DB export a routes(ctx) factory
+import { routes as tableRoutes } from "@/pages/tables.tsx";
+...tableRoutes(ctx)               // spread into Bun.serve() routes
+
+// Pages without DB export a plain routes object
+import { routes as blogRoutes } from "@/pages/blog.tsx";
+...blogRoutes
+```
+
+### Migrations
+
+```sh
+bun run db:generate <name> [--ts]   # create migration files
+bun run db:migrate                   # apply pending migrations
+bun run db:rollback                  # rollback last migration
+bun run db:status                    # show migration status
+```
+
+Files in `migrations/` follow `<timestamp>-<name>.up.sql` / `.down.sql` naming (or `.ts` with `--ts` flag). Each migration runs in a transaction. The `_migrations` table tracks applied migrations.
+
+### SQL runner
+
+Run ad-hoc SQL against dev or test database:
+
+```sh
+bun run db:sql "SELECT * FROM users LIMIT 5"           # dev database
+bun run db:sql -- --test "SELECT * FROM _migrations"    # test database
+echo "SELECT 1" | bun run db:sql                        # pipe from stdin
+echo "SELECT 1" | bun run db:sql -- --test              # pipe to test db
+```
+
+### DB helpers (`src/lib/db.ts`)
+
+Shared utilities for working with Bun's SQL client:
+
+- **`prepareForSql(data, arrayCols)`** — converts JS arrays to PostgreSQL array literals before passing to `sql(data)`. Used in generated `.gen.ts` files for tables with array columns.
+- **`parsePgArray(val)`** — parses a PostgreSQL array literal string into a JS array. Useful for types Bun doesn't auto-parse (e.g. `uuid[]`).
+
+Bun SQL array quirks:
+- `sql(data)` can't serialize JS arrays — they must be PG literals like `{a,b,c}`
+- `integer[]` returns as `Int32Array`, not `number[]`
+- `uuid[]` returns as raw PG literal string (not parsed)
+- `text[]`, `bool[]`, `date[]`, `timestamptz[]`, `interval[]` parse correctly
+
+### Repository codegen
+
+```sh
+bun run db:codegen                   # all public tables (skips _prefixed)
+bun run db:codegen -- users posts    # specific tables
+bun run db:codegen -- --schema app   # different schema
+```
+
+Generates two files per table in `src/repo/`:
+
+- **`<table>.gen.ts`** — auto-generated, always overwritten. Contains types (`Users`, `UsersCreate`, `UsersUpdate`) and CRUD functions (`create`, `read`, `update`, `remove`, `list`). Types are derived: `Create = Omit<T, Defaults> & Partial<Pick<T, Defaults>>`, `Update = Partial<Omit<T, PK>>`.
+- **`<table>.ts`** — manual wrapper, created once, **never overwritten** by codegen. Imports from `.gen.ts` with `_` prefix, re-exports with pass-through functions. Add validation, hooks, custom queries here.
+
+Always import from `<table>.ts` (the wrapper), not from `.gen.ts` directly.
+
+**JSONB typing via column comments:** `COMMENT ON COLUMN` with TypeScript type syntax → codegen reads via `col_description()` and generates typed fields instead of `unknown`.
+
+```sql
+-- In migration:
+COMMENT ON COLUMN users.emails IS '{ value: string; type?: string; primary?: boolean }[]';
+-- Generates: emails?: { value: string; type?: string; primary?: boolean }[];
+```
+
+### Import alias
+
+`@/` maps to `./src/` via `tsconfig.json` paths. Use from anywhere — no relative `../../`:
+
+```ts
+import { start } from "@/system.ts";
+import * as users from "@/repo/users.ts";
+```
+
+### Testing
+
+Tests live in `test/`, mirroring `src/` structure. Run with `bun test`.
+
+```sh
+bun test                          # all tests
+bun test test/repo/users.test.ts  # single file
+```
+
+Uses `iglite_test` database (auto-created). Each test wrapped in `withTx` runs in a transaction that rolls back — no cleanup needed.
+
+```ts
+import { startTest, stop, withTx, type Context } from "@/system.ts";
+
+let ctx: Context;
+beforeAll(async () => { ctx = await startTest(); });
+afterAll(async () => { await stop(ctx); });
+
+it("example", withTx(() => ctx, async (tx) => {
+  // tx is an isolated context — rolled back after test
+}));
+```
 
 ### Server-side JSX → HTML strings
 
@@ -124,6 +252,7 @@ Drop files in `./public/` → served at root path. `Bun.file()` auto-detects Con
 - `Bun.build()` — programmatic bundler (Tailwind CSS compilation)
 - `Bun.file()` — file reading, static serving
 - `Bun.markdown` — built-in markdown parser with render callbacks
+- `SQL` from `"bun"` — built-in PostgreSQL client ([docs](https://bun.sh/docs/runtime/sql))
 - `Glob` — file scanning (`./blog/*.md`)
 - WebSocket — built-in, used for live reload
 

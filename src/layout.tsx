@@ -19,6 +19,9 @@ export function Layout({ title, children }: { title: string; children?: any }) {
           <a href="/blog" class="text-blue-600 hover:text-blue-800 font-medium">
             Blog
           </a>
+          <a href="/tables" class="text-blue-600 hover:text-blue-800 font-medium">
+            Tables
+          </a>
           <a
             href="/about"
             class="text-blue-600 hover:text-blue-800 font-medium"

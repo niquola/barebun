@@ -1,8 +1,12 @@
 import tailwindPlugin from "bun-plugin-tailwind";
 import { Layout, html } from "./layout.tsx";
 import { routes as blogRoutes } from "./pages/blog.tsx";
+import { routes as tableRoutes } from "./pages/tables.tsx";
 import { liveReloadWs } from "./lib/livereload.ts";
 import { Tabs } from "./components/tabs.tsx";
+import { start } from "./system.ts";
+
+const ctx = start();
 
 // Build Tailwind CSS at startup (re-runs on --hot reload)
 const built = await Bun.build({
@@ -72,6 +76,7 @@ Bun.serve({
         </Layout>,
       ),
     ...blogRoutes,
+    ...tableRoutes(ctx),
   },
   async fetch(req, server) {
     const path = new URL(req.url).pathname;

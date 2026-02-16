@@ -3,6 +3,14 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "db:migrate": "bun scripts/migrate.ts up",
+    "db:rollback": "bun scripts/migrate.ts down",
+    "db:status": "bun scripts/migrate.ts status",
+    "db:generate": "bun scripts/migrate.ts generate",
+    "db:codegen": "bun scripts/codegen.ts",
+    "db:sql": "bun scripts/sql.ts"
+  },
   "dependencies": {
     "bun-plugin-tailwind": "^0.1.2",
     "jsx": "./jsx",
