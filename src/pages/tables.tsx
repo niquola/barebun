@@ -1,5 +1,6 @@
 import type { Context } from "../system.ts";
 import { Layout, html } from "../layout.tsx";
+import type { Session, SessionUser } from "../lib/auth.ts";
 
 type Table = { schema: string; name: string; type: string; est_rows: number; columns: number };
 type Column = { name: string; type: string; nullable: string; default_value: string | null };
@@ -34,9 +35,9 @@ async function listColumns(ctx: Context, schema: string, table: string): Promise
   `;
 }
 
-function TablesIndex({ tables }: { tables: Table[] }) {
+function TablesIndex({ tables, user }: { tables: Table[]; user?: SessionUser | null }) {
   return (
-    <Layout title="Tables">
+    <Layout title="Tables" user={user}>
       <h1 class="text-3xl font-bold mb-6">Database Tables</h1>
       {tables.length === 0
         ? <p class="text-gray-500">No tables found.</p>
@@ -71,9 +72,9 @@ function TablesIndex({ tables }: { tables: Table[] }) {
   );
 }
 
-function TableDetail({ schema, table, columns }: { schema: string; table: string; columns: Column[] }) {
+function TableDetail({ schema, table, columns, user }: { schema: string; table: string; columns: Column[]; user?: SessionUser | null }) {
   return (
-    <Layout title={`${schema}.${table}`}>
+    <Layout title={`${schema}.${table}`} user={user}>
       <div class="mb-4">
         <a href="/tables" class="text-blue-600 hover:text-blue-800 text-sm">&larr; All tables</a>
       </div>
@@ -103,17 +104,19 @@ function TableDetail({ schema, table, columns }: { schema: string; table: string
   );
 }
 
-export function routes(ctx: Context) {
-  return {
-    "/tables": async () => {
-      const tables = await listTables(ctx);
-      return html(<TablesIndex tables={tables} />);
-    },
-    "/tables/:schema/:table": async (req: Request & { params: Record<string, string> }) => {
-      const { schema, table } = req.params;
-      const columns = await listColumns(ctx, schema, table);
-      if (columns.length === 0) return new Response("Not found", { status: 404 });
-      return html(<TableDetail schema={schema} table={table} columns={columns} />);
-    },
-  };
+async function tablesIndex(ctx: Context, { user }: Session, req: Request) {
+  const tables = await listTables(ctx);
+  return html(<TablesIndex tables={tables} user={user} />);
 }
+
+async function tableDetail(ctx: Context, { user }: Session, req: Request & { params: { schema: string; table: string } }) {
+  const { schema, table } = req.params;
+  const columns = await listColumns(ctx, schema, table);
+  if (columns.length === 0) return new Response("Not found", { status: 404 });
+  return html(<TableDetail schema={schema} table={table} columns={columns} user={user} />);
+}
+
+export const routes = {
+  "/tables": tablesIndex,
+  "/tables/:schema/:table": tableDetail,
+};

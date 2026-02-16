@@ -2,11 +2,16 @@ import tailwindPlugin from "bun-plugin-tailwind";
 import { Layout, html } from "./layout.tsx";
 import { routes as blogRoutes } from "./pages/blog.tsx";
 import { routes as tableRoutes } from "./pages/tables.tsx";
+import { routes as authRoutes } from "./pages/auth.tsx";
+import { routes as userRoutes } from "./pages/users.tsx";
 import { liveReloadWs } from "./lib/livereload.ts";
 import { Tabs } from "./components/tabs.tsx";
-import { start } from "./system.ts";
+import { start, type Context } from "./system.ts";
+import { up } from "./lib/migrations.ts";
+import { withSession, type Session } from "./lib/auth.ts";
 
 const ctx = start();
+await up(ctx);
 
 // Build Tailwind CSS at startup (re-runs on --hot reload)
 const built = await Bun.build({
@@ -32,51 +37,58 @@ const users = [
   { name: "Diol", email: "bob@example.com" },
 ];
 
+function home(ctx: Context, { user }: Session, req: Request) {
+  return html(
+    <Layout title="Home" user={user}>
+      <h1 class="text-3xl font-bold mb-6">Home</h1>
+      <Tabs
+        tabs={[
+          {
+            id: "users",
+            label: "Users",
+            content: (
+              <div>
+                {users.map((u) => (
+                  <UserCard name={u.name} email={u.email} />
+                ))}
+              </div>
+            ),
+          },
+          {
+            id: "about",
+            label: "About",
+            content: (
+              <p class="text-gray-600">
+                This is a server-side rendered app built with Bun, TSX, Tailwind CSS, and Datastar.
+              </p>
+            ),
+          },
+          {
+            id: "settings",
+            label: "Settings",
+            content: (
+              <p class="text-gray-600">Settings panel placeholder.</p>
+            ),
+          },
+        ]}
+      />
+    </Layout>,
+  );
+}
+
 Bun.serve({
   port: 30555,
   routes: {
     "/styles.css": new Response(css, {
       headers: { "Content-Type": "text/css" },
     }),
-    "/": () =>
-      html(
-        <Layout title="Home">
-          <h1 class="text-3xl font-bold mb-6">Home</h1>
-          <Tabs
-            tabs={[
-              {
-                id: "users",
-                label: "Users",
-                content: (
-                  <div>
-                    {users.map((u) => (
-                      <UserCard name={u.name} email={u.email} />
-                    ))}
-                  </div>
-                ),
-              },
-              {
-                id: "about",
-                label: "About",
-                content: (
-                  <p class="text-gray-600">
-                    This is a server-side rendered app built with Bun, TSX, Tailwind CSS, and Datastar.
-                  </p>
-                ),
-              },
-              {
-                id: "settings",
-                label: "Settings",
-                content: (
-                  <p class="text-gray-600">Settings panel placeholder.</p>
-                ),
-              },
-            ]}
-          />
-        </Layout>,
-      ),
-    ...blogRoutes,
-    ...tableRoutes(ctx),
+    ...withSession(ctx, {
+      "/": home,
+      ...blogRoutes,
+      ...authRoutes,
+      ...tableRoutes,
+      ...userRoutes,
+    }),
   },
   async fetch(req, server) {
     const path = new URL(req.url).pathname;

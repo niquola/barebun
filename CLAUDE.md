@@ -51,6 +51,10 @@ docker compose logs db        # logs
 psql -h localhost -p 5493 -U iglite  # connect
 ```
 
+## Table naming
+
+`_` prefix is for system/infra tables only (`_migrations`). Application tables use plain names (`users`, `sessions`).
+
 ## Architecture
 
 Server-side rendered app: Bun + TSX templating + Tailwind CSS + htmx + Datastar. No React, no bundler step, no CLI watchers.
@@ -64,9 +68,9 @@ src/
 ├── components/
 │   └── tabs.tsx           # Reusable Datastar tab component
 ├── pages/
-│   ├── blog.tsx           # Blog routes & components (static, no ctx)
+│   ├── blog.tsx           # Blog routes & components
 │   ├── blog.css           # Blog typography (@apply)
-│   └── tables.tsx         # DB tables browser (needs ctx)
+│   └── tables.tsx         # DB tables browser
 ├── repo/
 │   ├── <table>.gen.ts     # Auto-generated CRUD (overwritten by codegen)
 │   └── <table>.ts         # Manual wrapper (created once, never overwritten)
@@ -109,13 +113,14 @@ docker-compose.yml         # PostgreSQL 18 + ParadeDB (pg_search/BM25)
 import { start } from "@/system.ts";
 const ctx = start();              // creates { sql: new SQL() }
 
-// Pages that need DB export a routes(ctx) factory
-import { routes as tableRoutes } from "@/pages/tables.tsx";
-...tableRoutes(ctx)               // spread into Bun.serve() routes
-
-// Pages without DB export a plain routes object
+// All pages export plain route objects — spread into withSession()
 import { routes as blogRoutes } from "@/pages/blog.tsx";
-...blogRoutes
+import { routes as tableRoutes } from "@/pages/tables.tsx";
+
+...withSession(ctx, {
+  ...blogRoutes,
+  ...tableRoutes,
+})
 ```
 
 ### Migrations
@@ -153,7 +158,11 @@ Bun SQL array quirks:
 - `uuid[]` returns as raw PG literal string (not parsed)
 - `text[]`, `bool[]`, `date[]`, `timestamptz[]`, `interval[]` parse correctly
 
-### Repository codegen
+### Repositories (`src/repo/`)
+
+`src/repo/` is the data access layer. Every entity gets a repo — regardless of storage backend (database, filesystem, external API). The repo exposes a consistent CRUD interface (`list`, `read`, `create`, `update`, `remove`) with typed inputs/outputs. Business logic (validation, hooks, computed fields) lives here, not in pages.
+
+**Database repos** — generated from PostgreSQL tables via codegen:
 
 ```sh
 bun run db:codegen                   # all public tables (skips _prefixed)
@@ -161,7 +170,7 @@ bun run db:codegen -- users posts    # specific tables
 bun run db:codegen -- --schema app   # different schema
 ```
 
-Generates two files per table in `src/repo/`:
+Two files per table:
 
 - **`<table>.gen.ts`** — auto-generated, always overwritten. Contains types (`Users`, `UsersCreate`, `UsersUpdate`) and CRUD functions (`create`, `read`, `update`, `remove`, `list`). Types are derived: `Create = Omit<T, Defaults> & Partial<Pick<T, Defaults>>`, `Update = Partial<Omit<T, PK>>`.
 - **`<table>.ts`** — manual wrapper, created once, **never overwritten** by codegen. Imports from `.gen.ts` with `_` prefix, re-exports with pass-through functions. Add validation, hooks, custom queries here.
@@ -175,6 +184,21 @@ Always import from `<table>.ts` (the wrapper), not from `.gen.ts` directly.
 COMMENT ON COLUMN users.emails IS '{ value: string; type?: string; primary?: boolean }[]';
 -- Generates: emails?: { value: string; type?: string; primary?: boolean }[];
 ```
+
+**Filesystem repos** — for data stored as files, not tables. Same CRUD pattern, but backed by a directory. Functions take an optional `dir` parameter (defaults to a conventional path) for testability — tests pass a temp directory.
+
+```ts
+// src/repo/blog.ts — filesystem-backed repo
+export type BlogPost = { slug: string; title: string; date: string; body: string };
+
+export async function list(dir = "./blog"): Promise<BlogPost[]>;
+export async function read(slug: string, dir?): Promise<BlogPost | null>;
+export async function create(data: BlogPostCreate, dir?): Promise<BlogPost>;
+export async function update(slug: string, data: BlogPostUpdate, dir?): Promise<BlogPost | null>;
+export async function remove(slug: string, dir?): Promise<boolean>;
+```
+
+The key principle: **pages never access storage directly** — they import from repos. Whether the data lives in PostgreSQL or the filesystem is the repo's concern, not the page's.
 
 ### Import alias
 
@@ -226,9 +250,41 @@ html(<Page title="Hello" />);
 
 `Bun.build()` with `bun-plugin-tailwind` at startup. The plugin's filesystem scanner finds classes in .tsx files even with just CSS as entrypoint. See [docs/tech/tailwind.md](docs/tech/tailwind.md).
 
-### Routing
+### Routing & session
 
-`Bun.serve()` routes + `fetch` fallback for static files (`./public/`) and WS upgrades. Pages export their routes, spread into main. See [docs/tech/routing.md](docs/tech/routing.md).
+Every route handler has the signature `(ctx, session, req) => Response`. `withSession(ctx, routes)` in `src/lib/auth.ts` resolves the session from the cookie and wraps each handler into Bun's expected `(req) => Response`.
+
+Pages export `const routes` — a plain object mapping paths to **named handler functions** (no inline lambdas). All routes are spread into a single `withSession()` call in `index.tsx`.
+
+```tsx
+// src/pages/blog.tsx — named handlers, plain route object
+function blogIndex(ctx: Context, { user }: Session, req: Request) {
+  return html(<BlogIndex user={user} />);
+}
+
+export const routes = {
+  "/blog": blogIndex,
+  "/blog/:slug": blogPost,
+};
+```
+
+```tsx
+// src/index.tsx — single withSession wraps everything
+...withSession(ctx, {
+  "/": home,
+  ...blogRoutes,
+  ...authRoutes,
+  ...tableRoutes,
+  ...userRoutes,
+}),
+```
+
+Handlers are directly testable — pass `ctx`, `session`, `req`:
+```ts
+const res = await blogIndex(testCtx, { user: null, sessionId: null }, new Request("http://x/blog"));
+```
+
+`Bun.serve()` routes + `fetch` fallback for static files (`./public/`) and WS upgrades. See [docs/tech/routing.md](docs/tech/routing.md).
 
 ### Markdown rendering
 

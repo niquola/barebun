@@ -1,30 +1,18 @@
-import { Glob } from "bun";
-import { renderMarkdown, parseFrontmatter } from "../lib/markdown";
+import { renderMarkdown } from "../lib/markdown";
 import { Layout, html } from "../layout.tsx";
+import * as blogRepo from "../repo/blog.ts";
+import type { Context } from "../system.ts";
+import type { Session, SessionUser } from "../lib/auth.ts";
 
-type BlogPost = { slug: string; title: string; date: string; content: string };
+type RenderedPost = blogRepo.BlogPost & { content: string };
 
-async function loadPosts(): Promise<BlogPost[]> {
-  const glob = new Glob("*.md");
-  const posts: BlogPost[] = [];
-  for (const path of glob.scanSync("./blog")) {
-    const slug = path.replace(/\.md$/, "");
-    const raw = await Bun.file(`./blog/${path}`).text();
-    const { meta, body } = parseFrontmatter(raw);
-    const title = meta.title || body.match(/^#\s+(.+)/m)?.[1] || slug;
-    const date = meta.date || "";
-    const content = renderMarkdown(body);
-    posts.push({ slug, title, date, content });
-  }
-  return posts.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-}
-
-const posts = await loadPosts();
+const rawPosts = await blogRepo.list();
+const posts: RenderedPost[] = rawPosts.map((p) => ({ ...p, content: renderMarkdown(p.body) }));
 console.log(`Blog: ${posts.length} posts loaded`);
 
-function BlogIndex() {
+function BlogIndex({ user }: { user?: SessionUser | null }) {
   return (
-    <Layout title="Blog">
+    <Layout title="Blog" user={user}>
       <h1 class="text-3xl font-bold mb-6">Blog</h1>
       {posts.length === 0 && <p class="text-gray-500">No posts yet.</p>}
       {posts.map((p) => (
@@ -37,9 +25,9 @@ function BlogIndex() {
   );
 }
 
-function BlogPostPage({ post }: { post: BlogPost }) {
+function BlogPostPage({ post, user }: { post: RenderedPost; user?: SessionUser | null }) {
   return (
-    <Layout title={post.title}>
+    <Layout title={post.title} user={user}>
       <article class="prose max-w-none">
         {post.content}
       </article>
@@ -47,11 +35,17 @@ function BlogPostPage({ post }: { post: BlogPost }) {
   );
 }
 
+function blogIndex(ctx: Context, { user }: Session, req: Request) {
+  return html(<BlogIndex user={user} />);
+}
+
+function blogPost(ctx: Context, { user }: Session, req: Request & { params: { slug: string } }) {
+  const post = posts.find((p) => p.slug === req.params.slug);
+  if (!post) return new Response("Not found", { status: 404 });
+  return html(<BlogPostPage post={post} user={user} />);
+}
+
 export const routes = {
-  "/blog": () => html(<BlogIndex />),
-  "/blog/:slug": (req: Request & { params: Record<string, string> }) => {
-    const post = posts.find((p) => p.slug === req.params.slug);
-    if (!post) return new Response("Not found", { status: 404 });
-    return html(<BlogPostPage post={post} />);
-  },
+  "/blog": blogIndex,
+  "/blog/:slug": blogPost,
 };
