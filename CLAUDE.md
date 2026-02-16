@@ -30,6 +30,8 @@ src/
 ├── index.tsx              # Entry: Tailwind build, routes, Bun.serve()
 ├── layout.tsx             # Layout component (nav, head, scripts)
 ├── styles.css             # Tailwind entry (@import "tailwindcss" + page CSS)
+├── components/
+│   └── tabs.tsx           # Reusable Datastar tab component
 ├── pages/
 │   ├── blog.tsx           # Blog routes & components
 │   └── blog.css           # Blog typography (@apply)
@@ -96,7 +98,37 @@ Drop files in `./public/` → served at root path. `Bun.file()` auto-detects Con
 ## Client-side libraries
 
 - **htmx** (`/htmx.min.js`) — HTML-driven AJAX with `hx-*` attributes
-- **Datastar** (`/datastar.min.js`) — reactive signals + SSE-driven DOM patching with `data-*` attributes
+- **Datastar** (`/datastar.min.js` v1.0) — reactive signals + SSE-driven DOM patching with `data-*` attributes
+
+### Datastar in JSX
+
+Datastar uses **colon syntax** for attribute modifiers (`data-on:click`, `data-signals:name`). Bun's JSX parser supports colons in attribute names — they compile to quoted property keys like `{"data-on:click": "..."}`, which our custom JSX runtime renders correctly.
+
+```tsx
+// Signals — reactive state
+<div data-signals={`{"count": 0}`}>          // object form (no colon)
+<div data-signals:count="0">                 // single signal (colon form)
+
+// Events — colon separates plugin from event name
+<button data-on:click="$count++">            // click handler
+<input data-on:keydown="$name = evt.target.value">
+
+// Conditional display
+<div data-show="$count > 0">                 // show/hide
+
+// Dynamic classes — object form (no colon needed)
+<div data-class={`{"active": $tab === 'home'}`}>
+
+// Two-way binding
+<input data-bind:name />                     // binds to $name signal
+
+// Text content
+<span data-text="$count"></span>             // reactive text
+```
+
+`$varName` references a signal in expressions. Use `!` prefix for Tailwind `!important` overrides in `data-class` when needed.
+
+Reusable components go in `src/components/`. See `src/components/tabs.tsx` for a Datastar-based example.
 
 ## Dependencies
 
