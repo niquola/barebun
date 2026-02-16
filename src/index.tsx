@@ -4,6 +4,7 @@ import { routes as blogRoutes } from "./pages/blog.tsx";
 import { routes as tableRoutes } from "./pages/tables.tsx";
 import { routes as authRoutes } from "./pages/auth.tsx";
 import { routes as userRoutes } from "./pages/users.tsx";
+import { routes as profileRoutes } from "./pages/profile.tsx";
 import { liveReloadWs } from "./lib/livereload.ts";
 import { Tabs } from "./components/tabs.tsx";
 import { start, type Context } from "./system.ts";
@@ -39,8 +40,8 @@ const users = [
 
 function home(ctx: Context, { user }: Session, req: Request) {
   return html(
-    <Layout title="Home" user={user}>
-      <h1 class="text-3xl font-bold mb-6">Home</h1>
+    <Layout title="Home" user={user} activePath="/">
+
       <Tabs
         tabs={[
           {
@@ -88,6 +89,7 @@ Bun.serve({
       ...authRoutes,
       ...tableRoutes,
       ...userRoutes,
+      ...profileRoutes,
     }),
   },
   async fetch(req, server) {

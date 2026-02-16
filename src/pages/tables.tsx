@@ -1,6 +1,8 @@
 import type { Context } from "../system.ts";
 import { Layout, html } from "../layout.tsx";
 import type { Session, SessionUser } from "../lib/auth.ts";
+import { DataTable, Badge, type Column as TableCol } from "../components/table.tsx";
+import { Breadcrumb } from "../components/breadcrumb.tsx";
 
 type Table = { schema: string; name: string; type: string; est_rows: number; columns: number };
 type Column = { name: string; type: string; nullable: string; default_value: string | null; comment: string | null };
@@ -39,73 +41,48 @@ async function listColumns(ctx: Context, schema: string, table: string): Promise
   `;
 }
 
+const tableColumns: TableCol<Table>[] = [
+  { key: "schema", label: "Schema", render: (t) => t.schema },
+  { key: "name", label: "Table", render: (t) => `<a href="/tables/${t.schema}/${t.name}" class="font-medium text-indigo-600 hover:text-indigo-900">${t.name}</a>` },
+  { key: "type", label: "Type", render: (t) => t.type },
+  { key: "columns", label: "Columns", render: (t) => String(t.columns) },
+  { key: "est_rows", label: "Est. Rows", render: (t) => String(t.est_rows) },
+];
+
 function TablesIndex({ tables, user }: { tables: Table[]; user?: SessionUser | null }) {
   return (
-    <Layout title="Tables" user={user}>
-      <h1 class="text-3xl font-bold mb-6">Database Tables</h1>
-      {tables.length === 0
-        ? <p class="text-gray-500">No tables found.</p>
-        : <table class="w-full text-sm border-collapse">
-            <thead>
-              <tr class="border-b border-gray-300 text-left">
-                <th class="py-2 pr-4 font-semibold">Schema</th>
-                <th class="py-2 pr-4 font-semibold">Table</th>
-                <th class="py-2 pr-4 font-semibold">Type</th>
-                <th class="py-2 pr-4 font-semibold text-right">Columns</th>
-                <th class="py-2 font-semibold text-right">Est. Rows</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tables.map((t) => (
-                <tr class="border-b border-gray-100 hover:bg-gray-50">
-                  <td class="py-2 pr-4 text-gray-500">{t.schema}</td>
-                  <td class="py-2 pr-4">
-                    <a href={`/tables/${t.schema}/${t.name}`} class="text-blue-600 hover:text-blue-800 font-medium">
-                      {t.name}
-                    </a>
-                  </td>
-                  <td class="py-2 pr-4 text-gray-500">{t.type}</td>
-                  <td class="py-2 pr-4 text-right">{t.columns}</td>
-                  <td class="py-2 text-right">{t.est_rows}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-      }
+    <Layout title="Tables" user={user} activePath="/tables">
+      <DataTable
+        title="Database tables"
+        description="All tables in the database with column counts and estimated row counts."
+        columns={tableColumns}
+        rows={tables}
+        empty="No tables found."
+      />
     </Layout>
   );
 }
 
+const columnColumns: TableCol<Column>[] = [
+  { key: "name", label: "Column", render: (c) => `<span class="font-medium text-gray-900">${c.name}</span>` },
+  { key: "type", label: "Type", render: (c) => c.type },
+  { key: "nullable", label: "Nullable", render: (c) => c.nullable === "YES" ? "yes" : "no" },
+  { key: "default", label: "Default", render: (c) => c.default_value ? `<code class="font-mono text-xs">${c.default_value}</code>` : "" },
+  { key: "comment", label: "Comment", render: (c) => c.comment ?? "" },
+];
+
 function TableDetail({ schema, table, columns, user }: { schema: string; table: string; columns: Column[]; user?: SessionUser | null }) {
   return (
-    <Layout title={`${schema}.${table}`} user={user}>
-      <div class="mb-4">
-        <a href="/tables" class="text-blue-600 hover:text-blue-800 text-sm">&larr; All tables</a>
-      </div>
-      <h1 class="text-3xl font-bold mb-1">{table}</h1>
-      <p class="text-gray-500 mb-6">{schema}</p>
-      <table class="w-full text-sm border-collapse">
-        <thead>
-          <tr class="border-b border-gray-300 text-left">
-            <th class="py-2 pr-4 font-semibold">Column</th>
-            <th class="py-2 pr-4 font-semibold">Type</th>
-            <th class="py-2 pr-4 font-semibold">Nullable</th>
-            <th class="py-2 pr-4 font-semibold">Default</th>
-            <th class="py-2 font-semibold">Comment</th>
-          </tr>
-        </thead>
-        <tbody>
-          {columns.map((c) => (
-            <tr class="border-b border-gray-100">
-              <td class="py-2 pr-4 font-medium">{c.name}</td>
-              <td class="py-2 pr-4 text-gray-600">{c.type}</td>
-              <td class="py-2 pr-4 text-gray-500">{c.nullable === "YES" ? "yes" : "no"}</td>
-              <td class="py-2 pr-4 text-gray-500 font-mono text-xs">{c.default_value ?? ""}</td>
-              <td class="py-2 text-gray-400 text-xs">{c.comment ?? ""}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <Layout title={`${schema}.${table}`} user={user} activePath="/tables">
+      <Breadcrumb crumbs={[
+        { label: "Tables", href: "/tables" },
+        { label: `${schema}.${table}` },
+      ]} />
+      <DataTable
+        columns={columnColumns}
+        rows={columns}
+        empty="No columns found."
+      />
     </Layout>
   );
 }
