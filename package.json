@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "bun-plugin-tailwind": "^0.1.2",
-    "jsx": "./jsx",
+    "jsx": "./src/lib/jsx",
     "shiki": "^3.22.0",
     "tailwindcss": "^4.1.18"
   },
