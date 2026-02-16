@@ -2,6 +2,7 @@ import tailwindPlugin from "bun-plugin-tailwind";
 import { Layout, html } from "./layout.tsx";
 import { routes as blogRoutes } from "./pages/blog.tsx";
 import { liveReloadWs } from "./lib/livereload.ts";
+import { Tabs } from "./components/tabs.tsx";
 
 // Build Tailwind CSS at startup (re-runs on --hot reload)
 const built = await Bun.build({
@@ -36,10 +37,38 @@ Bun.serve({
     "/": () =>
       html(
         <Layout title="Home">
-          <h1 class="text-3xl font-bold mb-4 text-red-500">Users</h1>
-          {users.map((u) => (
-            <UserCard name={u.name} email={u.email} />
-          ))}
+          <h1 class="text-3xl font-bold mb-6">Home</h1>
+          <Tabs
+            tabs={[
+              {
+                id: "users",
+                label: "Users",
+                content: (
+                  <div>
+                    {users.map((u) => (
+                      <UserCard name={u.name} email={u.email} />
+                    ))}
+                  </div>
+                ),
+              },
+              {
+                id: "about",
+                label: "About",
+                content: (
+                  <p class="text-gray-600">
+                    This is a server-side rendered app built with Bun, TSX, Tailwind CSS, and Datastar.
+                  </p>
+                ),
+              },
+              {
+                id: "settings",
+                label: "Settings",
+                content: (
+                  <p class="text-gray-600">Settings panel placeholder.</p>
+                ),
+              },
+            ]}
+          />
         </Layout>,
       ),
     ...blogRoutes,
