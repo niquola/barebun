@@ -158,3 +158,33 @@ describe("users signup", () => {
     }),
   );
 });
+
+describe("findOrCreateByGoogle", () => {
+  const googleUser = {
+    id: "google-id-123",
+    email: "test@gmail.com",
+    name: "Test User",
+    picture: "https://example.com/photo.jpg",
+  };
+
+  it(
+    "creates user on first call",
+    withTx(() => ctx, async (tx) => {
+      const user = await repo.findOrCreateByGoogle(tx, googleUser);
+      expect(user.id).toBeDefined();
+      expect(user.external_id).toBe("google-id-123");
+      expect(user.user_name).toBe("test@gmail.com");
+      expect(user.display_name).toBe("Test User");
+      expect(user.password).toBeFalsy();
+    }),
+  );
+
+  it(
+    "returns same user on second call",
+    withTx(() => ctx, async (tx) => {
+      const first = await repo.findOrCreateByGoogle(tx, googleUser);
+      const second = await repo.findOrCreateByGoogle(tx, googleUser);
+      expect(second.id).toBe(first.id);
+    }),
+  );
+});

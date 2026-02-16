@@ -4,6 +4,7 @@ import { type Users, type UsersCreate, type UsersUpdate,
   create as _create, read as _read, update as _update, remove as _remove, list as _list
 } from "./users.gen.ts";
 import { hashPassword, verifyPassword } from "../lib/auth.ts";
+import type { GoogleUser } from "../lib/google.ts";
 
 export type { Users, UsersCreate, UsersUpdate };
 
@@ -70,6 +71,26 @@ export async function list(ctx: Context, opts: { limit?: number; offset?: number
 export async function findByUserName(ctx: Context, userName: string): Promise<Users | null> {
   const rows = await ctx.sql`SELECT * FROM public.users WHERE user_name = ${userName}`;
   return (rows[0] as Users) ?? null;
+}
+
+// Find by external_id (OAuth provider ID)
+export async function findByExternalId(ctx: Context, externalId: string): Promise<Users | null> {
+  const rows = await ctx.sql`SELECT * FROM public.users WHERE external_id = ${externalId}`;
+  return (rows[0] as Users) ?? null;
+}
+
+// Find or create user from Google OAuth
+export async function findOrCreateByGoogle(ctx: Context, google: GoogleUser): Promise<Users> {
+  const existing = await findByExternalId(ctx, google.id);
+  if (existing) return existing;
+
+  return _create(ctx, {
+    external_id: google.id,
+    user_name: google.email,
+    display_name: google.name,
+    emails: [{ value: google.email, primary: true }],
+    photos: [{ value: google.picture }],
+  });
 }
 
 // Fuzzy search by user_name (ILIKE)

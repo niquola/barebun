@@ -16,6 +16,7 @@ Default to using Bun instead of Node.js.
 
 ```sh
 cp .env.example .env         # create .env from template (uses non-standard port 5493)
+bash scripts/google-oauth-setup.sh  # fetch Google OAuth creds from GCP Secret Manager
 docker compose up -d          # start PostgreSQL 18 + ParadeDB (pg_search/BM25)
 bun install                   # install dependencies
 ```

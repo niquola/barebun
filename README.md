@@ -151,6 +151,33 @@ iglite/
 └── tsconfig.json
 ```
 
+## Google OAuth Setup
+
+Google Sign-In credentials are stored in GCP Secret Manager (`atomic-ehr/iglite-google-oauth`).
+
+**For developers** — fetch credentials and save to `.env`:
+
+```sh
+bash scripts/google-oauth-setup.sh
+```
+
+**First-time setup** (when creating a new OAuth client):
+
+1. Go to [GCP Console > APIs & Services > Credentials](https://console.cloud.google.com/apis/credentials?project=atomic-ehr)
+2. Click **+ CREATE CREDENTIALS** > **OAuth client ID** > **Web application**
+3. Name: `iglite-dev`
+4. Authorized JavaScript origins: `http://localhost:30555`
+5. Authorized redirect URIs: `http://localhost:30555/auth/google/callback`
+6. Copy the Client ID and Client Secret, then store in Secret Manager:
+
+```sh
+bash scripts/google-oauth-setup.sh --save <CLIENT_ID> <CLIENT_SECRET>
+```
+
+> Note: Standard Google Sign-In OAuth clients (`*.apps.googleusercontent.com`) can only be
+> created through the GCP Console — there is no CLI/API for this. The script handles
+> storage and retrieval via GCP Secret Manager.
+
 ## Dependencies
 
 ```json
